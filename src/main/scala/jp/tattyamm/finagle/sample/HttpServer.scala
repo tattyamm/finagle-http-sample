@@ -15,13 +15,6 @@ import com.twitter.finagle.builder.ServerBuilder
 import com.twitter.finagle.http.{RichHttp, Response, Http, Request}
 import com.twitter.finagle.Service
 
-
-/**
- * This example demonstrates a sophisticated HTTP server that handles exceptions
- * and performs authorization via a shared secret. The exception handling and
- * authorization code are written as Filters, thus isolating these aspects from
- * the main service (here called "Respond") for better code organization.
- */
 object HttpServer extends App {
 
   /**
@@ -47,16 +40,11 @@ object HttpServer extends App {
     }
   }
 
-
   val handleExceptions = new HandleExceptions
 
   private def auth(service: Service[Request, Response]) = {
     handleExceptions andThen service
   }
-  //val respond = new HelloService
-
-  // compose the Filters and Service together:
-  //val myService: Service[HttpRequest, HttpResponse] = handleExceptions andThen respond
 
   val routingService =
     RoutingService.byPath {
@@ -69,6 +57,4 @@ object HttpServer extends App {
     .bindTo(new InetSocketAddress(8080))
     .name("httpserver")
     .build(routingService)
-
-
 }

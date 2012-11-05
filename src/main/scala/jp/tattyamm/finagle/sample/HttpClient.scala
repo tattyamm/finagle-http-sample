@@ -9,12 +9,6 @@ import org.jboss.netty.handler.codec.http.HttpResponseStatus._
 import com.twitter.finagle.{Service, SimpleFilter}
 import com.twitter.util.Future
 
-/**
- * A somewhat advanced example of using Filters with Clients. Below, HTTP 4xx and 5xx
- * class requests are converted to Exceptions. Additionally, two parallel requests are
- * made and when they both return (the two Futures are joined) the TCP connection(s)
- * are closed.
- */
 object HttpClient {
 
   class InvalidRequest extends Exception

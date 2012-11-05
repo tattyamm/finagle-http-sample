@@ -1,17 +1,20 @@
 package jp.tattyamm.finagle.sample
 
 
-
-import com.twitter.finagle.{Service, SimpleFilter}
+import com.twitter.finagle.SimpleFilter
 import org.jboss.netty.handler.codec.http._
 import org.jboss.netty.handler.codec.http.HttpResponseStatus._
 import org.jboss.netty.handler.codec.http.HttpVersion.HTTP_1_1
 import org.jboss.netty.buffer.ChannelBuffers.copiedBuffer
 import org.jboss.netty.util.CharsetUtil.UTF_8
-import com.twitter.util.Future
 import java.net.InetSocketAddress
-import com.twitter.finagle.builder.{Server, ServerBuilder}
-import com.twitter.finagle.http.Http
+import com.twitter.finagle.builder.Server
+import service.{EchoService, HelloService}
+import com.twitter.finagle.http.service.RoutingService
+import com.twitter.finagle.builder.ServerBuilder
+import com.twitter.finagle.http.{RichHttp, Response, Http, Request}
+import com.twitter.finagle.Service
+
 
 /**
  * This example demonstrates a sophisticated HTTP server that handles exceptions
@@ -19,52 +22,53 @@ import com.twitter.finagle.http.Http
  * authorization code are written as Filters, thus isolating these aspects from
  * the main service (here called "Respond") for better code organization.
  */
-object HttpServer {
+object HttpServer extends App {
+
   /**
    * A simple Filter that catches exceptions and converts them to appropriate
    * HTTP responses.
    */
-  class HandleExceptions extends SimpleFilter[HttpRequest, HttpResponse] {
-    def apply(request: HttpRequest, service: Service[HttpRequest, HttpResponse]) = {
+  class HandleExceptions extends SimpleFilter[Request, Response] {
+    def apply(request: Request, service: Service[Request, Response]) = {
 
       // `handle` asynchronously handles exceptions.
-      service(request) handle { case error =>
-        val statusCode = error match {
-          case _: IllegalArgumentException =>
-            FORBIDDEN
-          case _ =>
-            INTERNAL_SERVER_ERROR
-        }
-        val errorResponse = new DefaultHttpResponse(HTTP_1_1, statusCode)
-        errorResponse.setContent(copiedBuffer(error.getStackTraceString, UTF_8))
-
-        errorResponse
+      service(request) handle {
+        case error =>
+          val statusCode = error match {
+            case _: IllegalArgumentException =>
+              FORBIDDEN
+            case _ =>
+              INTERNAL_SERVER_ERROR
+          }
+          val errorResponse = new DefaultHttpResponse(HTTP_1_1, statusCode)
+          errorResponse.setContent(copiedBuffer(error.getStackTraceString, UTF_8))
+          Response(errorResponse)
       }
     }
   }
 
-  /**
-   * The service itself. Simply echos back "hello world"
-   */
-  class Respond extends Service[HttpRequest, HttpResponse] {
-    def apply(request: HttpRequest) = {
-      val response = new DefaultHttpResponse(HTTP_1_1, OK)
-      response.setContent(copiedBuffer("hello world", UTF_8))
-      Future.value(response)
+
+  val handleExceptions = new HandleExceptions
+
+  private def auth(service: Service[Request, Response]) = {
+    handleExceptions andThen service
+  }
+  //val respond = new HelloService
+
+  // compose the Filters and Service together:
+  //val myService: Service[HttpRequest, HttpResponse] = handleExceptions andThen respond
+
+  val routingService =
+    RoutingService.byPath {
+      case "/hello" => new HelloService
+      case "/echo" => new EchoService
     }
-  }
 
-  def main(args: Array[String]) {
-    val handleExceptions = new HandleExceptions
-    val respond = new Respond
+  val server: Server = ServerBuilder()
+    .codec(RichHttp[Request](Http()))
+    .bindTo(new InetSocketAddress(8080))
+    .name("httpserver")
+    .build(routingService)
 
-    // compose the Filters and Service together:
-    val myService: Service[HttpRequest, HttpResponse] = handleExceptions andThen respond
 
-    val server: Server = ServerBuilder()
-      .codec(Http())
-      .bindTo(new InetSocketAddress(8080))
-      .name("httpserver")
-      .build(myService)
-  }
 }
